@@ -144,7 +144,6 @@ bool AnnotationParser::parseNewSyntax()
       
     } else if (peek("scalar")) {
       if (!parseScalar(metadata)) return false;
-      
     } else {
       error = "Unknown identifier at character index " + std::to_string(sstream.tellg());
       return false;
@@ -202,7 +201,18 @@ bool AnnotationParser::parseScalar(std::shared_ptr<MDInfo>& thisMd)
       if (!expectReal(*(ii->IError))) return false;
       if (!expect(")")) return false;
       
-    } else if (peek("disabled")) {
+    } else if (peek("declaration")) {
+      ii->IDeclaration = true;
+    } else if (peek("location")) {
+      if (!expect("(")) return false;
+      int64_t locationInCode; // line of code of the declaration 
+      if (!expectInteger(locationInCode)) return false;
+      if (!expect(")")) return false;
+
+      ii->IDeclaration = true;
+      ii->location = locationInCode; 
+    }
+    else if (peek("disabled")) {
       ii->IEnableConversion = false;
     } else if (peek("final")) {
       ii->IFinal = true;

@@ -42,6 +42,9 @@ bool TaffoInitializer::runOnModule(Module &m)
 {
   DEBUG_WITH_TYPE(DEBUG_ANNOTATION, printAnnotatedObj(m));
 
+  // Overwrite declarations file
+  std::remove("declarations");
+
   ConvQueueT local;
   ConvQueueT global;
   readAllLocalAnnotations(m, local);
@@ -480,6 +483,7 @@ void TaffoInitializer::generateFunctionSpace(ConvQueueT& vals,
 Function* TaffoInitializer::createFunctionAndQueue(llvm::CallSite *call, ConvQueueT& vals, ConvQueueT& global, std::vector<llvm::Value*> &convQueue)
 {
   LLVM_DEBUG(dbgs() << "***** begin " << __PRETTY_FUNCTION__ << "\n");
+
   
   /* vals: conversion queue of caller
    * global: global values to copy in all converison queues

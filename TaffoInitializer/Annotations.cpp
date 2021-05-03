@@ -11,9 +11,20 @@
 #include "TaffoInitializerPass.h"
 #include "AnnotationParser.h"
 #include "Metadata.h"
+#include "TypeUtils.h"
+#include <iostream>
+#include <fstream>
+#include <sstream>
 
 using namespace llvm;
 using namespace taffo;
+using namespace std;
+using namespace mdutils;
+
+llvm::cl::opt<int> FracThreshold2("minfractbits2", llvm::cl::value_desc("bits"),
+    llvm::cl::desc("Threshold of fractional bits in fixed point numbers"), llvm::cl::init(3));
+llvm::cl::opt<int> TotalBits2("totalbits2", llvm::cl::value_desc("bits"),
+    llvm::cl::desc("Total amount of bits in fixed point numbers"), llvm::cl::init(32));
 
 
 void TaffoInitializer::readGlobalAnnotations(Module &m,
@@ -52,6 +63,7 @@ void TaffoInitializer::readGlobalAnnotations(Module &m,
 
 void TaffoInitializer::readLocalAnnotations(llvm::Function &f, MultiValueMap<Value *, ValueInfo>& variables)
 {
+
   bool found = false;
   for (inst_iterator iIt = inst_begin(&f), iItEnd = inst_end(&f); iIt != iItEnd; iIt++) {
     if (CallInst *call = dyn_cast<CallInst>(&(*iIt))) {
@@ -89,6 +101,8 @@ bool TaffoInitializer::parseAnnotation(MultiValueMap<Value *, ValueInfo>& variab
 				       ConstantExpr *annoPtrInst, Value *instr,
 				       bool *startingPoint)
 {
+  ofstream declarationsFile;
+  declarationsFile.open ("declarations", std::ios_base::app);
   ValueInfo vi;
 
   if (!(annoPtrInst->getOpcode() == Instruction::GetElementPtr))
@@ -120,8 +134,44 @@ bool TaffoInitializer::parseAnnotation(MultiValueMap<Value *, ValueInfo>& variab
     *startingPoint = parser.startingPoint;
   vi.target = parser.target;
 
+
+
   if (Instruction *toconv = dyn_cast<Instruction>(instr)) {
     variables.push_back(toconv->getOperand(0), vi);
+
+    if(vi.metadata->isDeclaration()) {
+      //printf("DECL #1");
+
+      if (InputInfo *II = dyn_cast<InputInfo>(vi.metadata.get())) {
+              Range* rng = II->IRange.get();
+
+              FixedPointTypeGenError fpgerr;
+              FPType fixedPoint = fixedPointTypeFromRange(*rng, &fpgerr, TotalBits2, FracThreshold2, 64, TotalBits2);
+
+              if (fpgerr != FixedPointTypeGenError::InvalidRange) {
+                int width = fixedPoint.getWidth();
+                unsigned pointPos = fixedPoint.getPointPos();
+
+                int integerPart = std::abs(width)-pointPos;
+                unsigned fractionalPart = pointPos;
+
+                const DebugLoc &location = toconv->getDebugLoc();
+
+                if(location) {
+                  declarationsFile << vi.target.getValue() + " " + to_string(location.getLine()) + " " + to_string(integerPart) + " " + to_string(fractionalPart) << endl;
+                }
+                else {
+                  declarationsFile << vi.target.getValue() + " " + to_string(vi.metadata->getLocation()) + " " + to_string(integerPart) + " " + to_string(fractionalPart) + " function" << endl;
+                }
+
+              }
+
+      }
+
+
+
+    }
+
     
   } else if (Function *fun = dyn_cast<Function>(instr)) {
     enabledFunctions.insert(fun);
@@ -130,10 +180,43 @@ bool TaffoInitializer::parseAnnotation(MultiValueMap<Value *, ValueInfo>& variab
         continue;
       variables.push_back(user, vi);
     }
+
+    if(vi.metadata->isDeclaration()) {
+        printf("DECL #2");
+
+    }
     
   } else {
+
+    // global variables declarations here
+    if(vi.metadata->isDeclaration()) {
+
+            if (InputInfo *II = dyn_cast<InputInfo>(vi.metadata.get())) {
+              Range* rng = II->IRange.get();
+
+              FixedPointTypeGenError fpgerr;
+              FPType fixedPoint = fixedPointTypeFromRange(*rng, &fpgerr, TotalBits2, FracThreshold2, 64, TotalBits2);
+
+              if (fpgerr != FixedPointTypeGenError::InvalidRange) {
+                int width = fixedPoint.getWidth();
+                unsigned pointPos = fixedPoint.getPointPos();
+
+                int integerPart = std::abs(width)-pointPos;
+                unsigned fractionalPart = pointPos;
+
+                
+                  declarationsFile << vi.target.getValue() + " " + to_string(vi.metadata->getLocation()) + " " + to_string(integerPart) + " " + to_string(fractionalPart) << endl;
+                
+
+              }
+
+      }
+
+    }
     variables.push_back(instr, vi);
   }
+
+  declarationsFile.close();
 
   return true;
 }
